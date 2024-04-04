@@ -16,10 +16,14 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torchvision.models import resnet50
 import matplotlib.pyplot as plt
+from sklearn.metrics import precision_score, recall_score
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 transform = transforms.Compose([
+    transforms.RandomRotation(degrees=15), #Added Random rotations in version2
+    transforms.RandomHorizontalFlip(), #Added Random horizontal flips in version2
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
@@ -27,7 +31,7 @@ transform = transforms.Compose([
 
 # Loaded SVHN dataset
 dataset = datasets.SVHN(root='./data', split='train', download=True, transform=transform)
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=True) # Increased the batch size in version2
 
 # Loading pre-trained ResNet50 model
 model = resnet50(pretrained=True)
@@ -37,7 +41,12 @@ for param in model.parameters():
     param.requires_grad = False
 
 f = model.fc.in_features
-model.fc = nn.Linear(f, 10)
+
+# Added Dropout in version 2
+model.fc = nn.Sequential(
+    nn.Dropout(0.5),
+    nn.Linear(f, 10)
+)
 
 model = model.to(device)
 
@@ -84,6 +93,29 @@ def train_model(optimizer, num_epochs=5):
 
     return train_loss_history, train_acc_history
 
+# Added model Evaluation method in version2
+def evaluate_model(model, dataloader):
+    model.eval()
+    correct = 0
+    total = 0
+    pred_list = []
+    label_list = []
+
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs, 1)
+            correct += (predicted == labels).sum().item()
+            total += labels.size(0)
+            pred_list.extend(predicted.cpu().numpy())
+            label_list.extend(labels.cpu().numpy())
+
+    precision = precision_score(label_list, pred_list, average='macro')
+    recall = recall_score(label_list, pred_list, average='macro')
+
+    accuracy = 100. * correct / total
+    print('Accuracy: {:.2f}%, Precision: {:.2f}, Recall: {:.2f}'.format(accuracy, precision, recall))
 # Training with all 3 Optimizers
 for optimizer_name, optimizer in optimizers.items():
     print(f'Training with {optimizer_name} optimizer:')
